@@ -1,0 +1,12 @@
+*
+
+# s3-to-minio
+## source code
+!./s3-to-minio/src
+!./s3-to-minio/index.ts
+!./s3-to-minio/config
+
+## module configuration files
+!./s3-to-minio/package.json
+!./s3-to-minio/yarn.lock
+!./s3-to-minio/tsconfig.json
