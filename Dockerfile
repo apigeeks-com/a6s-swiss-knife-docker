@@ -19,4 +19,5 @@ RUN yarn install --production
 FROM node:alpine
 
 RUN echo http://dl-cdn.alpinelinux.org/alpine/edge/testing >> /etc/apk/repositories && apk add --no-cache mysql-client postgresql-client mongodb-tools aws-cli
+ADD scripts/ /restore/scripts
 COPY --from=s3-to-minio /usr/app /s3-to-minio

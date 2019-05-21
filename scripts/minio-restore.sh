@@ -1,0 +1,19 @@
+#!/bin/sh
+
+# Minio settings.
+# MINIO_HOST
+# MINIO_ACCESS_KEY_ID
+# MINIO_SECRET_ACCESS_KEY
+# MINIO_BUCKET:
+# MINIO_ENCRYPTION_KEY:
+# MINIO_ENCRYPTION_KEY_MD5:
+
+# S3 settings.
+# S3_REGION:
+# S3_BUCKET:
+# S3_BUCKET_PREFIX:
+# S3_ENCRYPTION_KEY:
+# S3_ENCRYPTION_KEY_MD5:
+
+echo "Start process...."
+cd /s3-to-minio && yarn start

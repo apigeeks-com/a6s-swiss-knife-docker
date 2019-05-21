@@ -5,6 +5,7 @@
 !./s3-to-minio/src
 !./s3-to-minio/index.ts
 !./s3-to-minio/config
+!./scripts/
 
 ## module configuration files
 !./s3-to-minio/package.json
