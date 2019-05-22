@@ -16,7 +16,7 @@ RUN yarn build && \
 # Remove dev dependencies
 RUN yarn install --production
 
-FROM alpine:3.8.4
+FROM node:alpine
 
 RUN apk --update add python py-pip zip groff less bash curl git && \
     pip install -U awscli && \
