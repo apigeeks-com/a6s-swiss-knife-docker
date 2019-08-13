@@ -48,18 +48,23 @@ if (has('s3.accessKeyId') && has('s3.secretAccessKey')) {
 
 const s3 = new AWS.S3(s3Options);
 
-const headMinioObject = async (key: string): Promise<AWS.S3.Types.HeadObjectOutput | undefined> => {
+const headMinioObject = async (key: string, withoutSSE = false): Promise<AWS.S3.Types.HeadObjectOutput | undefined> => {
   console.debug('[MINIO]'.red, `call headObject action for key: ${key} in bucket ${get('s3.bucket')}`);
   try {
     return await new Promise<AWS.S3.Types.HeadObjectOutput>((res, rej) => {
+      let options: AWS.S3.Types.HeadObjectRequest = {
+        Bucket: get('minio.bucket'),
+        Key: key,
+      };
+
+      if (!withoutSSE) {
+        options.SSECustomerAlgorithm = 'AES256';
+        options.SSECustomerKey = get('minio.sse.key');
+        options.SSECustomerKeyMD5 = get('minio.sse.md5');
+      }
+
       minio.headObject(
-        {
-          Bucket: get('minio.bucket'),
-          Key: key,
-          SSECustomerAlgorithm: 'AES256',
-          SSECustomerKey: get('minio.sse.key'),
-          SSECustomerKeyMD5: get('minio.sse.md5'),
-        },
+        options,
         (err, data) => {
           if (err) {
             return rej(err);
@@ -74,24 +79,33 @@ const headMinioObject = async (key: string): Promise<AWS.S3.Types.HeadObjectOutp
       return;
     }
 
+    if (!withoutSSE && e.statusCode && e.statusCode === 400) {
+      return await headMinioObject(key, true);
+    }
+
     console.error('[MINIO]'.red, `headObject action failed for key: ${key}`);
     throw e;
   }
 };
 
-const headS3Object = async (key: string): Promise<AWS.S3.Types.HeadObjectOutput | undefined> => {
+const headS3Object = async (key: string, withoutSSE = false): Promise<AWS.S3.Types.HeadObjectOutput | undefined> => {
   const s3Key = get('s3.bucketPrefix') + key;
   console.debug('[S3]'.blue, `call headObject for key: ${s3Key} in bucket ${get('s3.bucket')}`);
   try {
     return await new Promise<AWS.S3.Types.HeadObjectOutput>((res, rej) => {
+      let options: AWS.S3.Types.HeadObjectRequest = {
+        Bucket: get('s3.bucket'),
+        Key: s3Key,
+      };
+
+      if (!withoutSSE) {
+        options.SSECustomerAlgorithm = 'AES256';
+        options.SSECustomerKey = get('s3.sse.key');
+        options.SSECustomerKeyMD5 = get('s3.sse.md5');
+      }
+
       s3.headObject(
-        {
-          Bucket: get('s3.bucket'),
-          Key: s3Key,
-          SSECustomerAlgorithm: 'AES256',
-          SSECustomerKey: get('s3.sse.key'),
-          SSECustomerKeyMD5: get('s3.sse.md5'),
-        },
+        options,
         (err, data) => {
           if (err) {
             return rej(err);
@@ -104,6 +118,10 @@ const headS3Object = async (key: string): Promise<AWS.S3.Types.HeadObjectOutput 
   } catch (e) {
     if (e.statusCode && e.statusCode === 404) {
       return;
+    }   
+
+    if (!withoutSSE && e.statusCode && e.statusCode === 400) {
+      return await headS3Object(key, true);
     }
 
     console.error('[S3]'.blue, `headObject failed for key: ${s3Key}`);
@@ -144,45 +162,64 @@ const copyToMinio = async (s3Object: AWS.S3.Object): Promise<void> => {
   const minioObjectModified = (minioObject && minioObject.LastModified && minioObject.LastModified.getTime()) || 0;
   const s3ObjectModified = (s3Object.LastModified && s3Object.LastModified.getTime()) || 0;
 
-  if (!minioObject || (minioObjectModified < s3ObjectModified && minioObject.ContentLength !== s3Object.Size)) {
-    await new Promise<void>((res, rej) => {
-      const rs = s3
-        .getObject({
-          Key: s3Key,
-          Bucket: get('s3.bucket'),
-          SSECustomerAlgorithm: 'AES256',
-          SSECustomerKey: get('s3.sse.key'),
-          SSECustomerKeyMD5: get('s3.sse.md5'),
-        })
-        .createReadStream();
+  if (!minioObject || (minioObjectModified < s3ObjectModified && minioObject.ContentLength !== s3Object.Size)) {    
+      if (s3Object.Size) {
+        await new Promise<void>((res, rej) => {
+          const rs = s3
+            .getObject({
+              Key: s3Key,
+              Bucket: get('s3.bucket'),
+              SSECustomerAlgorithm: 'AES256',
+              SSECustomerKey: get('s3.sse.key'),
+              SSECustomerKeyMD5: get('s3.sse.md5'),
+            })
+            .createReadStream();
 
-      minio.upload(
-        {
-          Key: minioKey,
-          Bucket: get('minio.bucket'),
-          Body: rs,
-          SSECustomerAlgorithm: 'AES256',
-          SSECustomerKey: get('minio.sse.key'),
-          SSECustomerKeyMD5: get('minio.sse.md5'),
-        },
-        err => {
-          if (err) {
-            console.log('[MINIO]'.red, `upload failed for key: ${minioKey}`);
+          minio.upload(
+            {
+              Key: minioKey,
+              Bucket: get('minio.bucket'),
+              Body: rs,
+              SSECustomerAlgorithm: 'AES256',
+              SSECustomerKey: get('minio.sse.key'),
+              SSECustomerKeyMD5: get('minio.sse.md5'),
+            },
+            err => {
+              if (err) {
+                console.log('[MINIO]'.red, `upload failed for key: ${minioKey}`);
 
-            return rej(err);
-          }
+                return rej(err);
+              }
 
-          if (!s3Object) {
-            created++;
-            console.log(`-> ${'[CREATED]'.green} new MINIO object for key: ${minioKey}`);
-          } else {
-            updated++;
-            console.log(`-> ${'[UPDATED]'.blue} MINIO object for key: ${minioKey}`);
-          }
-          res();
-        },
-      );
-    });
+              if (!s3Object) {
+                created++;
+                console.log(`-> ${'[CREATED]'.green} new MINIO object for key: ${minioKey}`);
+              } else {
+                updated++;
+                console.log(`-> ${'[UPDATED]'.blue} MINIO object for key: ${minioKey}`);
+              }
+              res();
+            },
+          );  
+        });
+      } else {
+        await new Promise((res, rej) => {
+          minio.upload({
+            Key: minioKey,
+            Bucket: get('minio.bucket'),
+            Body: ''
+          }, (err) => {
+            if (err) {
+              console.log('[MINIO]'.red, `failed to create empty object for key: ${minioKey}`);
+  
+              return rej(err);
+            }
+            
+            res();
+          })
+        });      
+      }
+   
   } else {
     skipped++;
     console.log(`-> ${'[SKIPPED]'.gray} MINIO object for key: ${minioKey}`);
